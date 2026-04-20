@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ecommerce-payment
+spec:
+  selector:
+    app: ecommerce-payment
+  ports:
+    - port: 8089
+      targetPort: 8006

@@ -4,10 +4,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
 
 import com.example.ecommerce_common_events.PaymentCompletedEvent;
 import com.example.ecommerce_common_events.PaymentFailedEvent;
@@ -19,6 +15,10 @@ import com.example.ecommerce_payment_service.repositories.PaymentRepository;
 import com.example.ecommerce_payment_service.repositories.ProcessedEventRepository;
 
 import jakarta.transaction.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
 
 @Service
 public class PaymentListener {
