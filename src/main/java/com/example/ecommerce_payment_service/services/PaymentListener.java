@@ -4,18 +4,17 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
-
-import com.example.ecommerce_common_events.PaymentCompletedEvent;
-import com.example.ecommerce_common_events.PaymentFailedEvent;
-import com.example.ecommerce_common_events.StockReservedEvent;
-import com.example.ecommerce_payment_service.dto.PaymentStatus;
 import com.example.ecommerce_payment_service.entities.Payment;
 import com.example.ecommerce_payment_service.entities.ProcessedEvent;
 import com.example.ecommerce_payment_service.repositories.PaymentRepository;
 import com.example.ecommerce_payment_service.repositories.ProcessedEventRepository;
 
+import com.example.events.StockAvroReservedEvent;
+import com.example.events.PaymentAvroCompletedEvent;
+import com.example.events.PaymentAvroFailedEvent;
+
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.apache.avro.specific.SpecificRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
@@ -24,107 +23,111 @@ import org.springframework.stereotype.Service;
 public class PaymentListener {
 
     private final PaymentRepository paymentRepository;
-    
-    @Autowired
-    ProcessedEventRepository processedEventRepository;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ProcessedEventRepository processedEventRepository;
+    private final KafkaTemplate<String, SpecificRecord> kafkaTemplate;
 
-    public PaymentListener(PaymentRepository paymentRepository,KafkaTemplate<String, Object> kafkaTemplate) {
-        this.paymentRepository = paymentRepository;        
+    // ✅ SIN @Qualifier → porque tu bean se llama "kafkaTemplate"
+    public PaymentListener(
+            PaymentRepository paymentRepository,
+            ProcessedEventRepository processedEventRepository,
+            KafkaTemplate<String, SpecificRecord> kafkaTemplate
+    ) {
+        this.paymentRepository = paymentRepository;
+        this.processedEventRepository = processedEventRepository;
         this.kafkaTemplate = kafkaTemplate;
     }
 
-    @KafkaListener(topics = "stock-reserved", groupId = "payment-group")
+    @KafkaListener(
+            topics = "stock-reserved",
+            groupId = "payment-group",
+            containerFactory = "kafkaListenerContainerFactory"
+    )
     @Transactional
-    public void handle(StockReservedEvent event) {
+    public void handle(StockAvroReservedEvent event) {
+
+        String eventId = event.getEventId().toString();
 
         // 🔥 1️⃣ Idempotencia
-        if (processedEventRepository.existsById(event.getEventId())) {
+        if (processedEventRepository.existsById(eventId)) {
             return;
         }
 
         try {
-            // 🔥 2️⃣ Crear pago en estado PENDING
+            // 🔥 2️⃣ Crear pago
             Payment payment = new Payment(
                     event.getOrderId(),
                     calculateAmount(event),
                     "EUR",
-                    "STRIPE" // proveedor simulado
+                    "STRIPE"
             );
-            // 🔥 3️⃣ Procesar pago externo
+
+            // 🔥 3️⃣ Procesar pago
             boolean paymentOk = processPayment(event);
 
             if (paymentOk) {
 
                 String transactionId = UUID.randomUUID().toString();
 
-                // 🔥 4️⃣ Cambiar estado dentro del dominio
+                // 🔥 4️⃣ Guardar
                 payment.markCompleted(transactionId);
-
-                paymentRepository.save(payment);
-
-                // 🔥 5️⃣ Guardar evento procesado
-                processedEventRepository.save(new ProcessedEvent(
-                                event.getEventId(),
-                                event.getClass().getSimpleName(),
-                                String.valueOf(event.getOrderId())
-                        )
-                );
-
-                // 🔥 6️⃣ Publicar éxito
-                kafkaTemplate.send("payment-completed",new PaymentCompletedEvent(
-                                UUID.randomUUID().toString(),
-                                event.getOrderId(),
-                                Instant.now()
-                        )
-                );
-
-            } else {
-
-                // 🔥 Pago fallido
-                payment.markFailed();
-
                 paymentRepository.save(payment);
 
                 processedEventRepository.save(
                         new ProcessedEvent(
-                                event.getEventId(),
+                                eventId,
                                 event.getClass().getSimpleName(),
                                 String.valueOf(event.getOrderId())
                         )
                 );
 
-                kafkaTemplate.send(
-                        "payment-failed",
-                        new PaymentFailedEvent(
-                                UUID.randomUUID().toString(),
-                                event.getOrderId(),
-                                Instant.now()
-                        )
-                );
+                // 🔥 5️⃣ EVENTO OK (AVRO)
+                PaymentAvroCompletedEvent successEvent =
+                        PaymentAvroCompletedEvent.newBuilder()
+                                .setEventId(UUID.randomUUID().toString())
+                                .setOrderId(event.getOrderId())
+                                .setTransactionId(transactionId)
+                                .setInstant(Instant.now().toString())
+                                .build();
+
+                kafkaTemplate.send("payment-completed", successEvent);
+
+            } else {
+                handleFailure(event, eventId);
             }
 
         } catch (Exception e) {
-
-            // ⚠️ Si algo inesperado ocurre
-            kafkaTemplate.send("payment-failed",new PaymentFailedEvent(
-                            UUID.randomUUID().toString(),
-                            event.getOrderId(),
-                            Instant.now()
-                    )
-            );
-
-            throw e; // importante para rollback
+            handleFailure(event, eventId);
+            throw e;
         }
     }
 
-    private boolean processPayment(StockReservedEvent event) {
-        // Aquí iría integración con Stripe, PayPal, etc.
-        return true; // simulación
+    // 🔥 método limpio reutilizable
+    private void handleFailure(StockAvroReservedEvent event, String eventId) {
+
+        processedEventRepository.save(
+                new ProcessedEvent(
+                        eventId,
+                        event.getClass().getSimpleName(),
+                        String.valueOf(event.getOrderId())
+                )
+        );
+
+        PaymentAvroFailedEvent failedEvent =
+                PaymentAvroFailedEvent.newBuilder()
+                        .setEventId(UUID.randomUUID().toString())
+                        .setOrderId(event.getOrderId())
+                        .setReason("PAYMENT_FAILED")
+                        .setInstant(Instant.now().toString())
+                        .build();
+
+        kafkaTemplate.send("payment-failed", failedEvent);
     }
 
-    private BigDecimal calculateAmount(StockReservedEvent event) {
-        // Normalmente vendría del Order Service
+    private boolean processPayment(StockAvroReservedEvent event) {
+        return true;
+    }
+
+    private BigDecimal calculateAmount(StockAvroReservedEvent event) {
         return BigDecimal.valueOf(100);
     }
 }
