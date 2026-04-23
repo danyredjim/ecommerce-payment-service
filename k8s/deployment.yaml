@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: ecommerce-payment-api
   labels:
-    app: ecommerce-payment   # 🔥 agrupa toda la app
+    app: ecommerce-payment
     service: api
 spec:
   replicas: 1
@@ -17,18 +17,56 @@ spec:
     spec:
       containers:
         - name: ecommerce-payment
-          image: host.docker.internal:5000/ecommerce-payment-service:latest
+          image: docker.io/drjimenez/myrepodockerhub:latest
           imagePullPolicy: Always
+
           ports:
             - containerPort: 8006
+
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
           env:
             - name: DB_URL
               value: jdbc:postgresql://postgres:5432/amazon_ecommerce_payment
             - name: DB_USER
               value: postgres
+
+            # 🔐 SECRET (NO hardcodear)
             - name: DB_PASS
-              value: postgres
+              valueFrom:
+                secretKeyRef:
+                  name: payment-secrets
+                  key: db-pass
+
             - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
               value: kafka:9092
+
             - name: SCHEMA_REGISTRY
               value: http://schema-registry:8081
+
+            # 🔐 STRIPE SECRET
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: payment-secrets
+                  key: stripe-key
+
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8006
+            initialDelaySeconds: 20
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8006
+            initialDelaySeconds: 40
+            periodSeconds: 10
