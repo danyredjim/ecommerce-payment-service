@@ -15,6 +15,11 @@ spec:
       labels:
         app: ecommerce-payment
     spec:
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+
       containers:
         - name: ecommerce-payment
           image: docker.io/drjimenez/myrepodockerhub:latest
@@ -34,10 +39,10 @@ spec:
           env:
             - name: DB_URL
               value: jdbc:postgresql://postgres:5432/amazon_ecommerce_payment
+
             - name: DB_USER
               value: postgres
 
-            # 🔐 SECRET (NO hardcodear)
             - name: DB_PASS
               valueFrom:
                 secretKeyRef:
@@ -50,7 +55,6 @@ spec:
             - name: SCHEMA_REGISTRY
               value: http://schema-registry:8081
 
-            # 🔐 STRIPE SECRET
             - name: STRIPE_SECRET_KEY
               valueFrom:
                 secretKeyRef:
