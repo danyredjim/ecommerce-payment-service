@@ -4,7 +4,6 @@ metadata:
   name: ecommerce-payment-api
   labels:
     app: ecommerce-payment
-    service: api
 spec:
   replicas: 1
   selector:
@@ -28,13 +27,14 @@ spec:
           ports:
             - containerPort: 8006
 
+          # 🔥 AJUSTE CRÍTICO (AQUÍ ESTABA EL PROBLEMA)
           resources:
             requests:
-              memory: "256Mi"
-              cpu: "250m"
+              memory: "128Mi"
+              cpu: "100m"
             limits:
-              memory: "512Mi"
-              cpu: "500m"
+              memory: "300Mi"
+              cpu: "300m"
 
           env:
             - name: DB_URL
@@ -49,11 +49,12 @@ spec:
                   name: payment-secrets
                   key: db-pass
 
+            # ⚠️ IMPORTANTE: desactiva Kafka por ahora
             - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
-              value: kafka:9092
+              value: ""
 
             - name: SCHEMA_REGISTRY
-              value: http://schema-registry:8081
+              value: ""
 
             - name: STRIPE_SECRET_KEY
               valueFrom:
@@ -65,12 +66,12 @@ spec:
             httpGet:
               path: /actuator/health
               port: 8006
-            initialDelaySeconds: 20
-            periodSeconds: 5
+            initialDelaySeconds: 25
+            periodSeconds: 10
 
           livenessProbe:
             httpGet:
               path: /actuator/health
               port: 8006
-            initialDelaySeconds: 40
-            periodSeconds: 10
+            initialDelaySeconds: 50
+            periodSeconds: 15
