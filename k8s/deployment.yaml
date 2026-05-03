@@ -14,10 +14,24 @@ spec:
       labels:
         app: ecommerce-payment
     spec:
+
       tolerations:
         - key: "node-role.kubernetes.io/control-plane"
           operator: "Exists"
           effect: "NoSchedule"
+
+      # 🔥 ESPERA A POSTGRES
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z postgres 5432; do
+                echo "Waiting for postgres..."
+                sleep 2
+              done
 
       containers:
         - name: ecommerce-payment
@@ -27,7 +41,7 @@ spec:
           ports:
             - containerPort: 8006
 
-          # 🔥 AJUSTE CRÍTICO (AQUÍ ESTABA EL PROBLEMA)
+          # 🔥 RECURSOS OPTIMIZADOS
           resources:
             requests:
               memory: "128Mi"
@@ -49,7 +63,7 @@ spec:
                   name: payment-secrets
                   key: db-pass
 
-            # ⚠️ IMPORTANTE: desactiva Kafka por ahora
+            # 🔥 DESACTIVAMOS KAFKA POR AHORA
             - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
               value: ""
 
