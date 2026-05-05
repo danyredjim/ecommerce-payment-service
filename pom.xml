@@ -106,6 +106,13 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
         </plugins>
+        <!-- DESACTIVA el filtering y listo. al darle al pipeline me dio error d formato ya q NO tenia al properties utf8-->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
     </build>
 
 </project>
