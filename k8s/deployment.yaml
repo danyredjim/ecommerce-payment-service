@@ -33,6 +33,18 @@ spec:
                 sleep 2
               done
 
+        # 🔥 ESPERA A KAFKA
+        - name: wait-for-kafka
+          image: busybox
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z kafka 9092; do
+                echo "Waiting for kafka..."
+                sleep 2
+              done
+
       containers:
         - name: ecommerce-payment
           image: docker.io/drjimenez/myrepodockerhub:latest
@@ -41,7 +53,6 @@ spec:
           ports:
             - containerPort: 8006
 
-          # 🔥 RECURSOS OPTIMIZADOS
           resources:
             requests:
               memory: "128Mi"
@@ -63,12 +74,12 @@ spec:
                   name: payment-secrets
                   key: db-pass
 
-            # 🔥 DESACTIVAMOS KAFKA POR AHORA
+            # 🔥 ACTIVAMOS KAFKA
             - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
-              value: ""
+              value: kafka:9092
 
             - name: SCHEMA_REGISTRY
-              value: ""
+              value: http://schema-registry:8081
 
             - name: STRIPE_SECRET_KEY
               valueFrom:
@@ -80,12 +91,12 @@ spec:
             httpGet:
               path: /actuator/health
               port: 8006
-            initialDelaySeconds: 25
+            initialDelaySeconds: 30
             periodSeconds: 10
 
           livenessProbe:
             httpGet:
               path: /actuator/health
               port: 8006
-            initialDelaySeconds: 50
+            initialDelaySeconds: 60
             periodSeconds: 15
